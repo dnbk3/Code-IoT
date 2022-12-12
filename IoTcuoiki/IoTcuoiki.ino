@@ -9,10 +9,15 @@
 #include <BlynkSimpleEsp8266.h>
 #include <string.h>
 #include "DHT.h"
+#include <LiquidCrystal_I2C.h>
+#include <Wire.h>
+ 
+// Set the LCD address to 0x27 for a 16 chars and 2 line display
+LiquidCrystal_I2C lcd(0x27, 16, 2);
 
 
-char ssid[] = "P305";                                       //  Tên wifi
-char pass[] = "hoilamgi";                                   //  Mật khẩu wifi
+char ssid[] = "realme5Pro";                                 //  Tên wifi
+char pass[] = "00000001";                                   //  Mật khẩu wifi
 char auth[] = "VgNLc70ijF50ZGIvPHmEdmhstFbxxSmn";           //  Mã người dùng trên Blynk
 
 
@@ -24,6 +29,9 @@ char auth[] = "VgNLc70ijF50ZGIvPHmEdmhstFbxxSmn";           //  Mã người dù
 #define OUTPUT_OFF 4    //D2
 #define OUTPUT_TANG 0   //D3
 #define OUTPUT_GIAM 2   //D4
+
+#define LCD_SDA 9
+#define LCD_SCL 10
 
 #define DHTTYPE DHT22   // DHT 22  (AM2302) 
 #define STEP 5000       // Thời gian lấy mẫu nhiệt độ
@@ -45,10 +53,15 @@ int t1 =35;                   // Tạo nhiệt độ ảo để thực hiện te
 
 void setup() {
   Serial.begin(9600);
-  Blynk.begin(auth, ssid, pass);    //  kết nối với wifi và Blynk bằng các thông tin define ở trên
+  Wire.begin(LCD_SDA, LCD_SCL);     // Setup chân nối LCD      
+  lcd.init();                       // Bắt đầu màn hình LCD
+  lcd.backlight();                  // Bật đèn nền màn hình LCD
+  lcd.home();                       // Đưa con trỏ màn hình về vị trí 0,0
+  lcd.print("Connecting!!!");       // Hiển thị trạng thái đợi kết nối
+  
+  Blynk.begin(auth, ssid, pass);    // Kết nối với wifi và Blynk bằng các thông tin define ở trên
   Serial.println("connected");
-  dht.begin();                      // setup cảm biến nhiệt độ, độ ẩm DHT
-
+  dht.begin();                      // Setup cảm biến nhiệt độ, độ ẩm DHT
   // setup chân nối ESP8266
   pinMode(SR505_1, INPUT);
   pinMode(SR505_2, INPUT);
@@ -62,6 +75,12 @@ void setup() {
   TT_dieu_hoa = 0;
   NhietDoDieuHoa = 28;
   tt_time=0;
+  // Hiển thị form màn hình
+  lcd.home();                     // Đưa con trỏ đến cột 0 hàng 0
+  lcd.print("ND:00*C  SN:0");
+  lcd.setCursor(0,1);             // Đưa con trỏ đến cột 1 hàng 2
+  lcd.print("DA:00%   DX:28*C");
+  lcd.display();                  // Hiển thị lên màn hình.
 }
 
 BLYNK_WRITE(V0) {
@@ -77,6 +96,7 @@ void loop() {
   if (digitalRead(SR505_1) == HIGH && TT_SR505_1 == 0 && digitalRead(SR505_2) == LOW) {         
     so_nguoi++;
     Blynk.virtualWrite(V5, so_nguoi);
+    writeSoNguoi(so_nguoi);
   }
   
   // Người đi ra khỏi phòng
@@ -84,13 +104,41 @@ void loop() {
   if (digitalRead(SR505_2) == HIGH && TT_SR505_2 == 0 && digitalRead(SR505_1) == LOW) {         
     if(so_nguoi >0) so_nguoi--;             // Tránh lỗi số người âm
     Blynk.virtualWrite(V5, so_nguoi);
-  }  
+    writeSoNguoi(so_nguoi);
+  }
+  
 
   // Update lại các trạng thái trước của cảm biến chuyển động
   TT_SR505_2 = digitalRead(SR505_2);
   TT_SR505_1 = digitalRead(SR505_1);
 
+  // ======================= PHẦN ĐO NHIỆT ĐỘ, ĐỘ ẨM ===================================
+  if(millis()- tt_time >= STEP || millis()< tt_time){         // Xác định lần lấy mẫu tiếp
+    float h = dht.readHumidity();                             // Đọc độ ẩm từ cảm biến                                       
+    float t = dht.readTemperature();
+     if (isnan(h) || isnan(t)) {                              // Kiểm tra null của nhiệt độ và độ ẩm 
+      Serial.println("Failed to read from DHT sensor!");
+      return;
+    }
+    Blynk.virtualWrite(V3, t);                                // Gửi độ ẩm lên Blynk
+    writeTemperature(t);                                      // In ra màn hình LCD
+    Blynk.virtualWrite(V4, h);                                
+    writeHumidity(h);  
+  }
 
+
+
+  
+  Serial.print(digitalRead(SR505_2));
+  Serial.print(" ");
+  Serial.print(digitalRead(SR505_1));
+  Serial.print(" ");
+  Serial.print(so_nguoi);
+  Serial.print(" ");
+  Serial.print(TT_dieu_hoa);
+  Serial.print(" ");
+  Serial.print(NhietDoDieuHoa);
+  Serial.print("\n");
 
   // ==================== PHẦN ĐIỀU KIỂN HỆ THỐNG ĐIỀU HÒA =============================
   if(tbn_system==1){                                        // Kiểm tra hệ thống có đang bật?
@@ -148,6 +196,7 @@ void loop() {
       // Đẩy thông tin lên Blynk
       Blynk.virtualWrite(V1, TT_dieu_hoa);
       Blynk.virtualWrite(V2, NhietDoDieuHoa);
+      writeNhietDoDieuHoa(NhietDoDieuHoa);
     }
   }else{                                                    // Nếu hệ thống tắt
     if(TT_tbn_system==1){                                   // Và Trạng thái trước của hệ thống điều kiển là bật
@@ -158,11 +207,30 @@ void loop() {
     }
   }
   TT_tbn_system=tbn_system;                                 // Lưu trạng thái trước của hệ thống điều kiển 
+  
 }
+
 
 void write_pulse(int pin){                                  // Hàm tạo xung điều khiển 
   digitalWrite(pin, HIGH);
   delay(50);
   digitalWrite(pin, LOW);
   return;
+}
+
+void writeTemperature(float t){                             // Cập nhật nhiệt độ lên LCD
+  lcd.setCursor(3,0);
+  lcd.print(round(t));
+}
+void writeHumidity(float h){                                // Cập nhật độ ẩm lên LCD
+  lcd.setCursor(3,1);
+  lcd.print(round(h));  
+}
+void writeSoNguoi(int sn){                                  // Cập nhật số người lên LCD
+  lcd.setCursor(12,0);
+  lcd.print(sn);  
+}
+void writeNhietDoDieuHoa(int nddh){                         // Cập nhật nhiệt độ điều hòa lên LCD
+  lcd.setCursor(12,1);
+  lcd.print(nddh);  
 }
