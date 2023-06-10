@@ -47,6 +47,7 @@ int so_nguoi_truoc = 0;       // lưu số người có trong phòng trong lần
 int TT_dieu_hoa = 0;          // Trạng thái điều hòa (0- off, 1- on)
 int NhietDoDieuHoa = 27;      // Nhiệt độ đang có trong điều hòa
 unsigned long tt_time=0;      // Thời điểm lấy mẫu lần trước để tính toán lần lấy mẫu tiếp theo
+unsigned long tt_time1=0;     // Thời điểm lấy mẫu nhiệt độ lần trước để tính toán lần lấy mẫu tiếp theo
 int tbn_system = 0;           // Lấy dữ liệu điều kiển từ Blynk, 1- cho phép điều kiển, 0- tắt hệ thống điều kiển và tắt điều hòa nếu nó đang bật
 int TT_tbn_system = 0;        // Lưu trạng thái của tbn_system trong vòng lặp trước (dùng để lấy xung lên)
 int t1 =35;                   // Tạo nhiệt độ ảo để thực hiện test hệ thống (khi triển khai sẽ xóa đi và thay bằng nhiệt độ đo được)
@@ -75,6 +76,7 @@ void setup() {
   TT_dieu_hoa = 0;
   NhietDoDieuHoa = 28;
   tt_time=0;
+  tt_time1=0;
   // Hiển thị form màn hình
   lcd.home();                     // Đưa con trỏ đến cột 0 hàng 0
   lcd.print("ND:00*C  SN:0");
@@ -113,7 +115,7 @@ void loop() {
   TT_SR505_1 = digitalRead(SR505_1);
 
   // ======================= PHẦN ĐO NHIỆT ĐỘ, ĐỘ ẨM ===================================
-  if(millis()- tt_time >= STEP || millis()< tt_time){         // Xác định lần lấy mẫu tiếp
+  if(millis()- tt_time1 >= STEP || millis()< tt_time1){         // Xác định lần lấy mẫu tiếp
     float h = dht.readHumidity();                             // Đọc độ ẩm từ cảm biến                                       
     float t = dht.readTemperature();
      if (isnan(h) || isnan(t)) {                              // Kiểm tra null của nhiệt độ và độ ẩm 
@@ -124,6 +126,7 @@ void loop() {
     writeTemperature(t);                                      // In ra màn hình LCD
     Blynk.virtualWrite(V4, h);                                
     writeHumidity(h);  
+    tt_time1 = millis();                                      // Cập nhật lại thời gian lấy mẫu
   }
 
 
